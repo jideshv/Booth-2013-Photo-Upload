@@ -1,5 +1,5 @@
 /*
- * jQuery File Upload Plugin 5.21.3
+ * jQuery File Upload Plugin 5.19.6
  * https://github.com/blueimp/jQuery-File-Upload
  *
  * Copyright 2010, Sebastian Tschan
@@ -71,13 +71,13 @@
             singleFileUploads: true,
             // To limit the number of files uploaded with one XHR request,
             // set the following option to an integer greater than 0:
-            limitMultiFileUploads: undefined,
+            limitMultiFileUploads: 2,
             // Set the following option to true to issue all file upload requests
             // in a sequential order:
             sequentialUploads: false,
             // To limit the number of concurrent uploads,
             // set the following option to an integer greater than 0:
-            limitConcurrentUploads: undefined,
+            limitConcurrentUploads: 2,
             // Set the following option to true to force iframe transport uploads:
             forceIframeTransport: false,
             // Set the following option to the location of a redirect url on the
@@ -97,7 +97,7 @@
             // to a preferred maximum chunk size. If set to 0, null or undefined,
             // or the browser does not support the required Blob API, files will
             // be uploaded as a whole.
-            maxChunkSize: undefined,
+            maxChunkSize: 1000000,
             // When a non-multipart upload or a chunked multipart upload has been
             // aborted, this option can be used to resume the upload by setting
             // it to the size of the already uploaded bytes. This option is most
@@ -140,57 +140,32 @@
             },
 
             // Other callbacks:
-
             // Callback for the submit event of each file upload:
             // submit: function (e, data) {}, // .bind('fileuploadsubmit', func);
-
             // Callback for the start of each file upload request:
             // send: function (e, data) {}, // .bind('fileuploadsend', func);
-
             // Callback for successful uploads:
             // done: function (e, data) {}, // .bind('fileuploaddone', func);
-
             // Callback for failed (abort or error) uploads:
             // fail: function (e, data) {}, // .bind('fileuploadfail', func);
-
             // Callback for completed (success, abort or error) requests:
             // always: function (e, data) {}, // .bind('fileuploadalways', func);
-
             // Callback for upload progress events:
             // progress: function (e, data) {}, // .bind('fileuploadprogress', func);
-
             // Callback for global upload progress events:
             // progressall: function (e, data) {}, // .bind('fileuploadprogressall', func);
-
             // Callback for uploads start, equivalent to the global ajaxStart event:
             // start: function (e) {}, // .bind('fileuploadstart', func);
-
             // Callback for uploads stop, equivalent to the global ajaxStop event:
             // stop: function (e) {}, // .bind('fileuploadstop', func);
-
             // Callback for change events of the fileInput(s):
             // change: function (e, data) {}, // .bind('fileuploadchange', func);
-
             // Callback for paste events to the pasteZone(s):
             // paste: function (e, data) {}, // .bind('fileuploadpaste', func);
-
             // Callback for drop events of the dropZone(s):
             // drop: function (e, data) {}, // .bind('fileuploaddrop', func);
-
             // Callback for dragover events of the dropZone(s):
             // dragover: function (e) {}, // .bind('fileuploaddragover', func);
-
-            // Callback for the start of each chunk upload request:
-            // chunksend: function (e, data) {}, // .bind('fileuploadchunksend', func);
-
-            // Callback for successful chunk uploads:
-            // chunkdone: function (e, data) {}, // .bind('fileuploadchunkdone', func);
-
-            // Callback for failed (abort or error) chunk uploads:
-            // chunkfail: function (e, data) {}, // .bind('fileuploadchunkfail', func);
-
-            // Callback for completed (success, abort or error) chunk upload requests:
-            // chunkalways: function (e, data) {}, // .bind('fileuploadchunkalways', func);
 
             // The plugin options are used as settings object for the ajax calls.
             // The following are jQuery ajax settings required for the file uploads:
@@ -366,6 +341,7 @@
                     if (options.blob) {
                         options.headers['Content-Disposition'] = 'attachment; filename="' +
                             encodeURI(file.name) + '"';
+                        options.headers['Content-Description'] = encodeURI(file.type);
                         formData.append(paramName, options.blob, file.name);
                     } else {
                         $.each(options.files, function (index, file) {
@@ -464,8 +440,7 @@
             // The HTTP request method must be "POST" or "PUT":
             options.type = (options.type || options.form.prop('method') || '')
                 .toUpperCase();
-            if (options.type !== 'POST' && options.type !== 'PUT' &&
-                    options.type !== 'PATCH') {
+            if (options.type !== 'POST' && options.type !== 'PUT') {
                 options.type = 'POST';
             }
             if (!options.formAcceptCharset) {
@@ -546,14 +521,13 @@
                 );
             }
             // The chunk upload method:
-            upload = function () {
+            upload = function (i) {
                 // Clone the options object for each chunk upload:
                 var o = $.extend({}, options);
                 o.blob = slice.call(
                     file,
                     ub,
-                    ub + mcs,
-                    file.type
+                    ub + mcs
                 );
                 // Store the current chunk size, as the blob itself
                 // will be dereferenced after data processing:
@@ -565,15 +539,13 @@
                 that._initXHRData(o);
                 // Add progress listeners for this chunk upload:
                 that._initProgressListener(o);
-                jqXHR = ((that._trigger('chunksend', null, o) !== false && $.ajax(o)) ||
-                        that._getXHRPromise(false, o.context))
+                jqXHR = ($.ajax(o) || that._getXHRPromise(false, o.context))
                     .done(function (result, textStatus, jqXHR) {
                         ub = that._getUploadedBytes(jqXHR) ||
                             (ub + o.chunkSize);
-                        // Create a progress event if upload is done and no progress
-                        // event has been invoked for this chunk, or there has been
-                        // no progress event with loaded equaling total:
-                        if (!o.loaded || o.loaded < o.total) {
+                        // Create a progress event if upload is done and
+                        // no progress event has been invoked for this chunk:
+                        if (!o.loaded) {
                             that._onProgress($.Event('progress', {
                                 lengthComputable: true,
                                 loaded: ub - o.uploadedBytes,
@@ -581,11 +553,6 @@
                             }), o);
                         }
                         options.uploadedBytes = o.uploadedBytes = ub;
-                        o.result = result;
-                        o.textStatus = textStatus;
-                        o.jqXHR = jqXHR;
-                        that._trigger('chunkdone', null, o);
-                        that._trigger('chunkalways', null, o);
                         if (ub < fs) {
                             // File upload not yet complete,
                             // continue with the next chunk:
@@ -598,11 +565,6 @@
                         }
                     })
                     .fail(function (jqXHR, textStatus, errorThrown) {
-                        o.jqXHR = jqXHR;
-                        o.textStatus = textStatus;
-                        o.errorThrown = errorThrown;
-                        that._trigger('chunkfail', null, o);
-                        that._trigger('chunkalways', null, o);
                         dfd.rejectWith(
                             o.context,
                             [jqXHR, textStatus, errorThrown]
@@ -633,16 +595,12 @@
         },
 
         _onDone: function (result, textStatus, jqXHR, options) {
-            if (!options.uploadedBytes && (!this._isXHRUpload(options) ||
-                    !options.loaded || options.loaded < options.total)) {
-                var total = this._getTotal(options.files) || 1;
-                // Create a progress event for each iframe load,
-                // or if there has been no progress event with
-                // loaded equaling total for XHR uploads:
+            if (!this._isXHRUpload(options)) {
+                // Create a progress event for each iframe load:
                 this._onProgress($.Event('progress', {
                     lengthComputable: true,
-                    loaded: total,
-                    total: total
+                    loaded: 1,
+                    total: 1
                 }), options);
             }
             options.result = result;
@@ -665,9 +623,15 @@
         },
 
         _onAlways: function (jqXHRorResult, textStatus, jqXHRorError, options) {
-            // jqXHRorResult, textStatus and jqXHRorError are added to the
-            // options object via done and fail callbacks
             this._active -= 1;
+            options.textStatus = textStatus;
+            if (jqXHRorError && jqXHRorError.always) {
+                options.jqXHR = jqXHRorError;
+                options.result = jqXHRorResult;
+            } else {
+                options.jqXHR = jqXHRorResult;
+                options.errorThrown = jqXHRorError;
+            }
             this._trigger('always', null, options);
             if (this._active === 0) {
                 // The stop callback is triggered when all uploads have
